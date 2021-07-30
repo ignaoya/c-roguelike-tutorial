@@ -1,2 +1,2 @@
 # c-roguelike-tutorial
-This is the code for a The C Roguelike Tutorial series.
+This is the code for the C Roguelike Tutorial series.
