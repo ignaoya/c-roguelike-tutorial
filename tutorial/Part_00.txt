@@ -1,0 +1,93 @@
+## Intro
+This tutorial will teach you the basics of how to make a classic retro roguelike game entirely in C using the Ncurses library. By the end of the tutorial you will have built a simple roguelike that will feature procedurally generated dungeons, increasing enemy difficulty, leveling up, equipment, spells, and a final boss at level 10 to give you a sense of closure.
+
+## Requirements
+The tutorial assumes a basic knowledge of C or similar languages. If you've never programmed before you might be able to follow along with the code, but it will be difficult for you to actually understand what you're doing. If that is the case I would recommend choosing a book from [The Definitive C Book Guide](https://stackoverflow.com/questions/562303/the-definitive-c-book-guide-and-list) over at StackOverflow to read up on the basics of C programming. I will be explaining some of the logic and decisions behind the code presented, but I won't go into the very basics of coding in C. 
+
+In order to follow along with the code you will need to have a C compiler such as GCC(Linux) or MinGW(Windows), and the ncurses library. Let's take a brief look at those now.
+
+## C Compiler and Ncurses
+
+### - Linux
+If you are working on a Linux machine chances are you already have GCC installed, which is the GNU Compiler Collection. Use the following command in your terminal to verify it:
+```
+$ gcc --version
+```
+If you get something like `bash: gcc: command not found`, you will have to install it yourself. If you are using Ubuntu or one of its derivatives the following commands will install GCC and a few other necessary programs:
+```
+$ sudo apt update
+$ sudo apt install build-essential
+```
+After this, try again the first command to verify that you have gcc installed.
+
+Now that gcc is installed, use the following command to install ncurses:
+```
+$ sudo apt install libncurses5-dev libncursesw5-dev
+```
+Now you should be setup with GCC and Ncurses. At the bottom of the chapter we'll go through a small program to verify that everything's working properly.
+
+### - Windows
+Ncurses is a Unix/Linux-based library meant for use in unix-like terminals, but for Windows you can use the alternative PDcurses, which is the Public Domain curses port.
+
+Windows doesn't come preinstalled with a C compiler so you will have to install your own. I suggest installing MinGW, which is the Windows port of GCC, as it has a simple installer that allows you to install the PDcurses library at the same time. The easiest way to do it is by downloading the MinGW installer from [SourceForge](https://sourceforge.net/projects/mingw/files/Installer/mingw-get-setup.exe/download). 
+
+Choose the default folder location for the installation. In the installation manager you will reach a step where you can choose which packages to install; mark the boxes on all of the options from the 'Basic Setup' tab, there should be seven of them. Then go to the 'All Packages' tab and mark all of the following for installation:
+
+* mingw32-libncurses (dll)
+* mingw32-libncurses (dev)
+* mingw32-libpdcurses (dll)
+* mingw32-libpdcurses (dev)
+
+After these are selected go to 'Installation'-> 'Apply Changes'  and click `Apply` to continue with the installation. 
+
+Once the installation is finished you need to add the path to MinGW\bin to your PATH environment variable. In the Windows start bar search for `Edit environment variables for your account`. Edit the PATH variable and click on 'New' to add a new path. If you installed in the default location, the folder path should be `C:\MinGW\bin`.
+
+You should now have MinGW installed in your system. To verify it, open the Windows Command Prompt and type:
+```
+$ gcc --version
+```
+
+### - MacOS
+Unfortunately I don't have a Mac system to try this on, so I can only provide what I've read online without personal validation of its effectiveness. From what I've read, you should be able to use Homebrew to install both GCC and Ncurses on Mac:
+```
+$ brew install gcc
+$ brew install ncurses
+```
+Hope that works for you or at least gets you started.
+
+## Testing GCC and Ncurses
+In order to verify that everything is working we'll make a short program to validate our setup. Create a folder where you want to start your project and open a new file in your editor of choice. Call the file `main.c` and put the following code in it:
+```
+#include <ncurses.h>
+
+int main(void)
+{
+  initscr();
+  endwin();
+
+  return 0;
+}
+```
+If you are using Windows, you will have to replace the first line to include the curses.h file instead of the ncurses.h file, like so:
+```diff
+-#include <ncurses.h>
++#include <curses.h>
+```
+This change and a similarly small replacement in our makefile will be the only differences in the code for Windows. Apart from this minor change in the include statement, everything else in the code will be the same on any machine.
+
+I will explain `initscr()` and `endwin()` in the next part of this tutorial. For now, simply compile the file to verify that the compiler is able to include the header correctly.
+
+On Linux
+```
+$ gcc main.c -lncurses
+```
+On Windows
+```
+$ gcc main.c -lpdcurses
+```
+If you do not get any error messages you should now have either an `a.out` file in Linux or an `a.exe` file in Windows. The `-lncurses` and `-lpdcurses` options used above ask the compiler to link the ncurses or the pdcurses libraries respectively. You can try running the program, which will close immediately after starting. 
+
+## Other Resources
+If you ever need help check out the [Roguelike Dev Subreddit](https://www.reddit.com/r/roguelikedev/) which is a very welcoming community exclusively for roguelike developers!
+
+Now you're all set to start coding! See you on Part 1!
