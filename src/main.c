@@ -1,4 +1,4 @@
-#include <ncurses.h>
+#include <rogue.h>
 
 int main(void)
 {
