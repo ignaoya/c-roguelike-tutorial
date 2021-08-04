@@ -1,0 +1,309 @@
+In this part we will be drawing the player character onto the screen and moving him around. If you haven't set up your environment with GCC and Ncurses yet, go check out the setup instructions at [Part 0: The Setup]().
+
+## Getting Started
+Let's first create a `src` folder inside our game folder to keep all of our `.c` files. Place your `main.c` file in that folder and replace the code in it to be the following:
+```c
+#include <ncurses.h> // replace 'ncurses.h' with 'curses.h' if using Windows
+
+int main(void)
+{
+  initscr();
+  noecho();
+  curs_set(0);
+
+
+  while(getch() != 'q')
+  {
+    mvaddch(10, 20, '@');
+  }
+
+  endwin();
+
+  return 0;
+}
+```
+
+The first function we call, `initscr()` starts up the ncurses system and allows us to call all the other functions on our terminal. `noecho()` will prevent ncurses from immediately drawing on the screen when we press any keys, try commenting it out to see what happens. And finally `curs_set(0)` will make our cursor invisible, otherwise we would see the flashing cursor on our screen, which is not part of our game. 
+
+After this setup of ncurses we can actually start using it to draw on the screen. `getch()` is a function that takes a single character input from your keyboard and returns that character to the calling function. In this case, we are running a while loop that will constantly ask the user for an input and will keep printing the `@` symbol until the user presses the `q` key, at which time the while loop will exit and our program will end.
+
+The function `mvaddch(10, 20, '@');` is a function which takes three parameters, a `y` index, an `x` index and a character to print to screen at the `(y, x)` coordinates. Notice how ncurses uses coordinates with the `y` axis first and the `x` axis second. This is consistent across all ncurses functions. `mvaddch()` function just moves the cursor to the indicated position, then adds the given character to where the cursor is.
+
+To get out of the loop just press the `q` key. After the while loop we run `endwin()` which is the ncurses function that closes ncurses in our terminal, this will always be the last function we run before closing our program. 
+
+## Automating Compilation
+
+Before trying out this program, let's simplify our compilation task, which we will be repeating many times, by creating a makefile. Create a new file in your top level game folder (outside of `src`) called `makefile` and add the following code to it:
+
+- In Linux
+
+```makefile
+CC = gcc
+CFLAGS = -lncurses
+SOURCES = ./src/*.c
+
+all: rogue run clean
+
+rogue: 
+        $(CC) $(SOURCES) $(CFLAGS) -o rogue
+
+run:
+        ./rogue
+
+clean:
+        rm rogue
+```
+
+Now all you need to do in order to compile and run the program is type the following command:
+```bash
+$ make
+```
+This will first run the section titled `rogue`, which will be the same as `gcc ./src/*.c -lncurses -o rogue` after replacing all the variables.  If it manages to compile correctly and without errors, it will then proceed to run the section titled `run`, running the compiled program. If the program itself finishes without an error, the makefile will run the `clean` section, removing the compiled program so that next time you run `make` you get a fresh compilation.
+
+- In Windows
+
+You can try to install `make` in Windows to have the above makefile work for you, but I have not been able to try that out. The solution I can offer is to write a simple `.bat` file with the following code which will allow you to automate compilation in a similar manner:
+
+```bat
+gcc .\src\*.c -lpdcurses -o -rogue
+rogue.exe
+Del rogue.exe
+``` 
+
+###**Attention!**
+**If you don't remove the compiled file, next time you run make, it will see that there is already a compiled version and will skip the compilation phase altogether, even if you've made changes to the source files. This is especially prone to happen whenever you get bugs in your code which make your program crash during runtime. Since the makefile will stop for any errors, the bugged compilation will not be removed. If you forget to delete the file and start debugging and running make again, it will simply run the old compilation again and you won't actually be seeing the modifications you've made to your source code.**
+
+Try running the program with either your makefile or your .bat file and see if it works properly. Right now it simply draws an `@` sign on the screen. Not much, but that's our main character. The `@` sign is traditionally used in ASCII-based roguelikes to represent the player avatar.
+
+Now let's try getting it to move.
+
+## Movement
+To start moving around we'll need some way to change the player's `y` and `x` position. In order to give the player a `(y, x)` position let's create some structs. First, go ahead and create a new directory called `include` in your base directory and add a file into that folder called `rogue.h`. You should now have a directory tree as follows:
+
+```
+tutorial_folder/
+    -include/
+        -rogue.h
+    -src/
+        -main.c
+    -makefile
+```
+
+From now on, all of our `.c` files will go into `src/` and all of our `.h` files will go into `include/`.
+
+Add the following code into `rogue.h`:
+
+```c
+#ifndef ROGUE_H
+#define ROGUE_H
+
+#include <ncurses.h>
+#include <stdlib.h>
+
+typedef struct Position
+{
+  int y;
+  int x;
+} Position;
+
+typedef struct Entity
+{
+  Position pos;
+  char ch;
+} Entity;
+
+#endif
+```
+
+Here we're creating two simple structs, one called `Position` which contains `(y, x)` coordinates in the form of two int variables, and another called `Entity` which for now will only contain a `Position` variable and a `char` variable where we will keep how the player is represented on the screen. We include `<stdlib.h>` because we will be using a function that is defined in it. We also added `#include <ncurses.h>` at the top because we're going to include this file in `main.c` and we'll just keep all of our includes in our `.h` files.
+
+The first two statements and the last line,
+
+```c
+#ifndef ROGUE_H
+#define ROGUE_H
+
+...
+
+#endif
+```
+
+are used to keep the compiler from compiling the `rogue.h` file multiple times. Since we will include it in several different `.c` files, we have the compiler check if the variable `ROGUE_H` has been previously defined and, if not, define `ROGUE_H` and proceed with compiling the rest of the file. In this way, `rogue.h` will only get compiled the first time it is included, after which, it will simply detect that `ROGUE_H` has already been defined and skip the rest of the file.
+
+Now to include our `rogue.h` file change the following code in `main.c`:
+
+```diff
+-#include <ncurses.h>
++#include <rogue.h>
+```
+
+Now that we've connected `main.c` with `rogue.h` let's create another file in which we will make a function that creates our player using the structs and another that takes an input and modifies the player position. Create a new file in `src` called `player.c` and add the following:
+
+```c
+#include <rogue.h>
+
+
+Entity* createPlayer(Position start_pos)
+{
+  Entity* newPlayer = calloc(1, sizeof(Entity));
+
+  newPlayer->pos.y = start_pos.y;
+  newPlayer->pos.x = start_pos.x;
+  newPlayer->ch = '@';
+
+  return newPlayer;
+}
+
+void handleInput(int input)
+{
+  switch(input)
+  {
+    //move up
+    case 'k':
+      player->pos.y--;
+      break;
+    //move down
+    case 'j':
+      player->pos.y++;
+      break;
+    //move left
+    case 'h':
+      player->pos.x--;
+      break;
+    //move right
+    case 'l':
+      player->pos.x++;
+      break;
+    default:
+      break;
+  }
+}
+```
+We include `rogue.h` because we're using both structs defined in that file. The first function `Entity* createPlayer(Position start_pos)` takes a Position argument and returns a pointer to an Entity. We create the player as a pointer to Entity in order to be able to modify his component variables in function calls. We will use pointers extensively in this tutorial. 
+`Entity* newPlayer = calloc(1, sizeof(Entity));` declares the `newPlayer` variable and dynamically allocates the appropriate memory for that pointer. We are using `calloc()` in this tutorial instead of its counterpart `malloc()` beacause `calloc` not only allocates the memory, it also initializes all of the bytes in that memory block to `0`, erasing any garbage data which might have been stored previously and allowing us to use the memory safely. You can find more information about the `calloc()` function [here](https://en.cppreference.com/w/c/memory/calloc). `calloc()` is defined in `stdlib.h` which we've already included in `rogue.h`.
+
+After allocating the memory we assign the appropriate values to the `newPlayer` position and character. Note that when using pointers to structs you need to use `->` in order to reference its member variables. If it is just a struct variable, like the `Position` struct inside of the `Entity` struct, then you just use `.` in order to reference its member variables. That is why we use `newPlayer->pos.y`: `newPlayer` is a pointer so we use `->` to access its `pos` member, and since `pos` is not a pointer but a struct variable, we simply use `.` to access its `y` and `x` members. 
+
+After setting up the player, we return the `newPlayer` pointer to the calling function.
+
+`void handleInput(int input)` is a simple function where we use a `switch()` statement in order to increase or decrease the `y` or `x` variable of the player's position depending on the input provided. Here we are using a pointer variable called `player` which we will declare as an extern in our `rogue.h` file below. I used the vim-like `hjkl` keyset because it's the classic retro style, but you can change it to use the standard `wasd` keys or any other keyset you prefer.
+
+Open `rogue.h` and append the following code before the `#endif` line:
+```c
+// player.c functions
+Entity* createPlayer(Position start_pos);
+void handleInput(int input);
+
+// externs
+extern Entity* player;
+
+#endif
+```
+Here we are simply adding the declarations of the functions we defined in `player.c`. This is so any file which includes `rogue.h` can use these functions properly. We also add an `extern Entity* player;` variable which we will declare in our `main.c` file. We will add several `externs` throughout the tutorial whenever we want to create a variable that is shared between any files that include `rogue.h`.
+
+Open `main.c` and make the following changes:
+
+```diff
+#include <rogue.h>
++ 
++Entity* player;
++
+int main(void)
+{
++  int ch;
++  Position start_pos = { 10, 20 };
++
+  initscr();
+  noecho();
+  curs_set(0);
++ 
++  player = createPlayer(start_pos);
++  mvaddch(player->pos.y, player->pos.x, player->ch);
++ 
+-  while(getch() != 'q')
++  while(ch = getch())
+  {
+-    mvaddch(10, 20, '@');
++    if (ch == 'q')
++    {
++      break;
++    }
++
++      handleInput(ch);
++      clear();
++      mvaddch(player->pos.y, player->pos.x, player->ch);
+  }
+ 
+  endwin();
+```
+Your `main.c` file should now look like this:
+```c
+#include <rogue.h>
+
+Entity* player;
+
+int main(void)
+{
+  int ch;
+  Position start_pos = { 10, 20 };
+
+  initscr();
+  noecho();
+  curs_set(0);
+
+  player = createPlayer(start_pos);
+  mvaddch(player->pos.y, player->pos.x, player->ch);
+
+  while(ch = getch())
+  {
+    if (ch == 'q')
+    {
+      break;
+    }
+
+    handleInput(ch);
+    clear();
+    mvaddch(player->pos.y, player->pos.x, player->ch);
+  }
+
+  endwin();
+
+  return 0;
+}
+```
+`Entity* player;` declares a variable which we will use to point to our player object. We have already added it as an `extern` in our `rogue.h` file so that it can be used by functions outside of `main.c` without us having to pass the player object as an argument. This will help reduce our function signatures.
+
+`int ch;` declares an int which we will use to store the input from the user and `Position start_pos = { 10, 20 };` creates a `Position` struct which we use to give the `createPlayer()` function a starting position. We hard code it for now, but we will soon be getting that position depending on the randomized creation of the rooms in the dungeon.
+
+`player = createPlayer(start_pos);` calls the `createPlayer()` function and assigns the returned `Entity` pointer to our `player` variable.
+
+`mvaddch(player->pos.y, player->pos.x, player->ch);` uses the `player` struct's members to call `mvaddch()` and draw the player's character on the screen at his position. We call this once before the `while` loop to avoid just having an initial black screen before the user presses any keys. 
+
+`while(ch = getch())` starts a while loop that waits for the user to press a key and assigns that key to our `ch` variable declared above. 
+
+```c
+if (ch == 'q')
+    {
+      break;
+    }
+``` 
+This verifies if the key pressed is `q` and exits the `while` loop if it is. 
+
+If the input isn't a `q` then we proceed with the rest of the while loop, calling first `handleInput(ch);`, which will modify the player's position depending on the key. Then we use `clear();`, which is an ncurses function that erases the screen. And finally we call `mvaddch(player->pos.y, player->pos.x, player->ch);` again to draw the character at his new position. If we didn't use `clear()` before drawing the player on his new position, the old positions of the player would still be drawn and you would see a trail of previous `@` symbols. 
+
+Before we try compiling it, we need to modify our makefile to compile our include file. Make the following changes to it:
+```diff
+-CFLAGS = -lncurses
++CFLAGS = -lncurses -I./include/
+```
+If you're using the windows batch file change the first line to the following:
+```bat
+gcc .\src\*.c -lpdcurses -I.\include\ -o -rogue
+```
+Try compiling it using the `.bat` file or with make:
+```bash
+$ make
+```
+You should be able to move your `@` character around the screen by pressing the appropriate keys. Press `q` to exit. Congratulations, you now have a moving player!
+
+That's the end of this part. We'll have Part 2 coming out soon.
