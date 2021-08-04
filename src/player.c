@@ -23,6 +23,7 @@ void handleInput(int input)
 		//move down
 		case 'j':
 			player->pos.y++;
+			break;
 		//move left
 		case 'h':
 			player->pos.x--;

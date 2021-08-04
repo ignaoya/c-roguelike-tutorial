@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -lncurses
+CFLAGS = -lncurses -I./include/
 SOURCES = ./src/*.c
 
 all: rogue run clean
