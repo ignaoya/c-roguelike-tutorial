@@ -4,13 +4,13 @@
 #include <ncurses.h>
 #include <stdlib.h>
 
-typedef struct Position
+typedef struct
 {
 	int y;
 	int x;
 } Position;
 
-typedef struct Entity
+typedef struct
 {
 	Position pos;
 	char ch;
