@@ -14,26 +14,40 @@ Entity* createPlayer(Position start_pos)
 
 void handleInput(int input)
 {
+	Position newPos = { player->pos.y, player->pos.x };
+
 	switch(input)
 	{
 		//move up
 		case 'k':
-			player->pos.y--;
+			newPos.y--;
 			break;
 		//move down
 		case 'j':
-			player->pos.y++;
+			newPos.y++;
 			break;
 		//move left
 		case 'h':
-			player->pos.x--;
+			newPos.x--;
 			break;
 		//move right
 		case 'l':
-			player->pos.x++;
+			newPos.x++;
 			break;
 		default:
 			break;
 	}
+
+	movePlayer(newPos);
 }
+
+void movePlayer(Position newPos)
+{
+	if (map[newPos.y][newPos.x].walkable)
+	{
+		player->pos.y = newPos.y;
+		player->pos.x = newPos.x;
+	}
+}
+
 

@@ -1,32 +1,24 @@
 #include <rogue.h>
 
+const int MAP_HEIGHT = 25;
+const int	MAP_WIDTH = 100;
+
 Entity* player;
+Tile** map;
 
 int main(void)
 {
-	int ch;
-	Position start_pos = { 10, 20 };
+	Position start_pos;
 
-	initscr();
-	noecho();
-	curs_set(0);
+	cursesSetup();
 
+	map = createMapTiles();
+	start_pos = setupMap();
 	player = createPlayer(start_pos);
-	mvaddch(player->pos.y, player->pos.x, player->ch);
 
-	while(ch = getch())
-	{
-		if (ch == 'q')
-		{
-			break;
-		}
+	gameLoop();
 
-		handleInput(ch);
-		clear();
-		mvaddch(player->pos.y, player->pos.x, player->ch);
-	}
-
-	endwin();
+	closeGame();
 
 	return 0;
 }
