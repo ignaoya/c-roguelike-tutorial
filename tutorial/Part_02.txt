@@ -1,0 +1,440 @@
+In this part of the tutorial we will set up the tile system we will use for the map, set all of the tiles in our map to be walls, and then start carving a room for our player to move around in. Before we get into defining our map tiles, let's take some time to refactor our `main.c` code to separate the setup code and the game loop code into their own functions. 
+
+Create a new file in `src/` called `engine.c` and add the following code into it:
+
+```c
+#include <rogue.h>
+
+void cursesSetup(void)
+{ 
+  initscr();
+  noecho();
+  curs_set(0);
+}
+
+void gameLoop(void)
+{ 
+  int ch;
+  
+  mvaddch(player->pos.y, player->pos.x, player->ch);
+
+  while(ch = getch())
+  { 
+    if (ch == 'q')
+    { 
+      break;
+    } 
+    
+    handleInput(ch);
+    clear();
+    mvaddch(player->pos.y, player->pos.x, player->ch);
+  } 
+} 
+```
+This is the same as the setup and loop code found in `main.c` but separated into individual functions. 
+
+In Part 1 we used the `calloc()` function to dynamically assign memory needed for our `Entity* player` variable. Whenever you dynamically assign memory to pointers in this way, it is good practice to free this memory when you don't need it anymore, since C does not do this automatically. We can use the `free()` function defined in the `stdlib.h` header file to do so. Since the `player` pointer should be freed when the game closes, let's take this opportunity to make a function we can run to process all the code needed at the end of the program.
+
+Still on `engine.c`, append the following code beneath the gameLoop() function:
+
+```c
+...
+
+void closeGame(void)
+{ 
+  endwin();
+  free(player);
+} 
+```
+
+The `free()` function takes a pointer argument and releases the memory allocated to it so that the program can reuse that memory later. If you continuously allocate memory for pointers and you don't free them when no longer in use, your program will incur memory leaks which can eventually lead your program to terminate unexpectedly due to a lack of available memory. You can read more about `free()` [here](https://en.cppreference.com/w/c/memory/free). 
+
+Before we can use these functions in our `main.c`, we need to add their declarations in our `rogue.h` file, like so:
+
+```diff
+...
+} Entity;
++
++//engine.c functions
++void cursesSetup(void);
++void gameLoop(void);
++void closeGame(void);
+
+// player.c functions
+...
+```
+
+Now we can use these functions in our `main.c` to simplify it. By removing all the now duplicate code and replacing it with the appropriate calls `main.c` now looks like this:
+```c
+#include <rogue.h>
+
+Entity* player;
+
+int main(void)
+{
+  cursesSetup();
+
+  Position start_pos = { 10, 20 };
+  player = createPlayer(start_pos);
+  
+  gameLoop();
+  
+  closeGame();
+  
+  return 0;
+}
+```
+
+That looks a lot nicer! Compile the game again to verify that it works the same as before. Now we're ready to start defining our map tiles.
+
+## The Tile Struct
+
+Tile structs will contain the information of each individual map tile. These tiles will represent our floors, walls and staircases. Open your `rogue.h` file and add the following struct definition in between your Position and Entity structs:
+
+```c
+...
+} Position;
+
+typedef struct
+{
+  char ch;
+  bool walkable;
+} Tile;
+
+typedef struct
+...
+```
+
+For now our Tile structs will only have a `ch` member to represent how to draw them and a `walkable` member to allow the player to walk on floors but not through walls. We'll add a few more features later on in the tutorial. We don't give our Tile structs a `Position` member because we are going to use them in a 2-d array which will intuitively manage the positions of our tiles through its indices.
+
+In order to create our 2-d map array we should define the dimensions of our map with two constants. Add the following to our `main.c` file:
+
+```diff
+#include <rogue.h>
++
++const int MAP_HEIGHT = 25;
++const int MAP_WIDTH = 100;
+
+Entity* player;
+...
+```
+
+And now add these constants as externs in `rogue.h`:
+
+```diff
+...
+// externs
++extern const int MAP_HEIGHT;
++extern const int MAP_WIDTH;
+extern Entity* player;
+...
+```
+
+We also want to add an extern for an array of tiles we'll use to draw our map:
+
+```diff
+...
+// externs
+extern const int MAP_HEIGHT;
+extern const int MAP_WIDTH;
+extern Entity* player;
++extern Tile** map;
+...
+```
+
+And of course, let's add this variable to `main.c` as well:
+
+```diff
+...
+Entity* player;
++Tile** map;
+
+int main(void)
+...
+```
+
+The `map` variable is a pointer to pointers to Tile structs. In other words, the first pointer will point to an array of pointers, each of which will point to an array of tiles. In this way, we get a two dimensional array of tiles which we will be able to use with the notation `map[y][x]` to access the individual tiles. We'll need a function that allocates the memory for all the rows of tiles. Create a new file in `src/` called `map.c` and add the following code to it:
+
+```c
+#include <rogue.h>
+
+Tile** createMapTiles(void)
+{ 
+  Tile** tiles = calloc(MAP_HEIGHT, sizeof(Tile*));
+  
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  { 
+    tiles[y] = calloc(MAP_WIDTH, sizeof(Tile));
+    for (int x = 0; x < MAP_WIDTH; x++)
+    { 
+      tiles[y][x].ch = '#';
+      tiles[y][x].walkable = false;
+    }
+  } 
+  
+  return tiles;
+} 
+
+void freeMap(void)
+{ 
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  { 
+    free(map[y]);
+  } 
+  free(map);
+} 
+```
+
+Let's go over these two functions. `createMapTiles()` takes no arguments and returns a two dimensional array in the form of a pointer to pointers to Tiles. 
+```c
+  Tile** tiles = calloc(MAP_HEIGHT, sizeof(Tile*));
+```
+Here we declare the variable called `tiles`, named like that to avoid confusion with the global variable `map`, and then allocate memory for an amount of `Tile*` (pointers to Tile) equal to `MAP_HEIGHT`. In other words, we allocate as many pointers to Tile as the length of our map's `y` axis. 
+```c
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  { 
+    tiles[y] = calloc(MAP_WIDTH, sizeof(Tile));
+```
+With this for loop we iterate through all of the pointers we have just allocated, and we allocate for each of them an amount of Tiles equal to `MAP_WIDTH`. In this way, each pointer to `Tile` in our `y` axis now points to an array of tiles of the same length as our `x` axis. 
+```c
+    for (int x = 0; x < MAP_WIDTH; x++)
+    { 
+      tiles[y][x].ch = '#';
+      tiles[y][x].walkable = false;
+    }
+```
+And finally we loop through the newly allocated `x` axis and access each of our tiles in order to initialize their member variables. We are using '#' to represent our walls and setting `walkable` to false in order to keep the player from moving through walls. We will soon have to code some movement logic that uses this boolean.
+
+At the end of this function we simply return the `tiles` pointer, which is now a map filled entirely with walls.  
+
+The `freeMap()` function is a simple cleanup function that iterates throught the array of pointers in order to free each row of tiles before finally freeing the `map` pointer itself.
+
+Again, we need to add these functions to `rogue.h`:
+```diff
+...
+void closeGame(void);
++
++//map.c functions
++Tile** createMapTiles(void);
++void freeMap(void);
+
+// player.c functions
+...
+```
+
+Let's use `createMapTiles()` in our `main.c` file to initialize the `map` variable:
+
+```diff
+...
+  player = createPlayer(start_pos);
++  map = createMapTiles();
+
+  gameLoop();
+...
+```
+
+Now we need a way to draw the map and the player every turn. Let's create a new file called `draw.c` to keep all of our drawing logic. Add the following code to it:
+
+```c
+#include <rogue.h>
+
+void drawMap(void)
+{ 
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  { 
+    for (int x = 0; x < MAP_WIDTH; x++)
+    { 
+      mvaddch(y, x, map[y][x].ch);
+    } 
+  } 
+} 
+
+void drawEntity(Entity* entity)
+{ 
+  mvaddch(entity->pos.y, entity->pos.x, entity->ch);
+} 
+
+void drawEverything(void)
+{
+  clear();
+  drawMap();
+  drawEntity(player);
+} 
+```
+
+These functions are fairly self-explanatory. `drawMap()` iterates through the `map` array and adds the `ch` symbol to the screen, `drawEntity()` is just a generic function to simplify drawing any entity on the screen, and `drawEverything()` simply runs all of the drawing steps needed to fully render the scene.
+
+Add these functions to our `rogue.h` file:
+
+```diff
+...
+} Entity;
++
++//draw.c functions
++void drawMap(void);
++void drawEntity(Entity* entity);
++void drawEverything(void);
+
+//engine.c functions
+...
+```
+
+Now we can replace our draw step in the `gameLoop()` function with `drawEverything()`. Open `engine.c` and make the following changes:
+
+```diff
+void gameLoop(void)
+{ 
+  int ch;
++
++  drawEverything();
+-  mvaddch(player->pos.y, player->pos.x, player->ch);
+
+  while(ch = getch())
+  { 
+    if (ch == 'q')
+    { 
+      break;
+    } 
+    
+    handleInput(ch);
++    drawEverything();
+-    clear();
+-    mvaddch(player->pos.y, player->pos.x, player->ch);
+  } 
+}
+```
+
+Try compiling your file now. You should now see the screen is filled with `#` through out the dimensions specified in our `MAP_HEIGHT` and `MAP_WIDTH`. You may need to enlarge your terminal in order to see the entire rectangle. 
+
+The issue we have now is that the player is just flying over the walls. We need to add the logic to check whether we're moving into a wall or not. Open our `player.c` file and make the following changes to the `handleInput()` function:
+
+```diff
+void handleInput(int input)
+{
++
++  Position newPos = { player->pos.y, player->pos.x };
++
+  switch(input)
+  {
+    //move up
+    case 'k':
+-      player->pos.y--;
++      newPos.y--;
+      break;
+    //move down
+    case 'j':
+-      player->pos.y++;
++      newPos.y++;
+      break;
+    //move left
+    case 'h':
+-      player->pos.x--;
++      newPos.x--;
+      break;
+    //move right
+    case 'l':
+-      player->pos.x++;
++      newPos.x++;
+      break;
+    default:
+      break;
+  }
++  
++  movePlayer(newPos);
+}
+``` 
+And now add a new function called `movePlayer()` below the `handleInput()` function:
+```c
+...
+void handleInput(int input)
+{
+...
+}
+
+void movePlayer(Position newPos)
+{ 
+  if (map[newPos.y][newPos.x].walkable)
+  {
+    player->pos.y = newPos.y;
+    player->pos.x = newPos.x;
+  }
+}
+```
+
+We've changed `handleInput()` to create a `newPos` variable which will start off the same as the player's current position, and then it will be modified according to the user's input. Whether `newPos` is modified or not, it will then be passed to the function `movePlayer()`, which will take care of actually determining whether the player can actually move to the location required by the user's input. We do this by simply checking for the boolean value of `map[newPos.y][newPos.x].walkable`. If it's true, then we change the player's position to be the same as `newPos`.
+
+Add the new function to `rogue.h`:
+
+```diff
+// player.c functions
+Entity* createPlayer(Position start_pos);
+void handleInput(int input);
++void movePlayer(Position newPos);
+```
+
+And that's all we have to do to get the logic working. Try the game out now. The player should not be able to move through walls. The problem of course is that the player can't move at all because we didn't create any floor space in our dungeon. 
+
+Add the following function in our `map.c` file in between the `createMapTiles()` and the `freeMap()` function:
+
+```c
+...
+  return tiles;
+}
+
+Position setupMap(void)
+{
+  Position start_pos = { 10, 50 };
+
+  for (int y = 5; y < 15; y++)
+  {
+    for (int x = 40; x < 60; x++)
+    {
+      map[y][x].ch = '.';
+      map[y][x].walkable = true;
+    }
+  }
+
+  return start_pos;
+}
+
+void freeMap(void)
+{
+...
+```
+
+In this function we are simply hard coding a double for loop to iterate through a 10x20 sized section of our `map` matrix and replacing that space with floors. We represent the floors with the `.` character and assign `true` to their `walkable` member. We are also hard coding a starting position which we will pass to the calling function so that they can use that to place the player in an appropriate location. In the next part of this tutorial we will be generating the rooms and the player starting position randomly.
+
+Add this function to our `rogue.h`:
+
+```diff
+//map.c functions
+Tile** createMapTiles(void);
++Position setupMap(void);
+void freeMap(void);
+```
+
+Now open `main.c` and make the following modifications:
+
+```diff
+int main(void)
+{
++
++  Position start_pos;
++
+  cursesSetup();
+-
+-  Position start_pos = { 10, 20 };
+-  player = createPlayer(start_pos);
+  map = createMapTiles();
++  start_pos = setupMap();
++  player = createPlayer(start_pos);
+
+  gameLoop();
+
+  closeGame();
+
+  return 0;
+}
+```
+
+Compile and run the game now. You should be able to move the player around a square of dots, but he'll stop at the walls. Perfect! Now we're ready to move on to the next part, where we'll look into procedurally generating our dungeon.
