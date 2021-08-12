@@ -11,6 +11,7 @@ int main(void)
 	Position start_pos;
 
 	cursesSetup();
+	srand(time(NULL));
 
 	map = createMapTiles();
 	start_pos = setupMap();
