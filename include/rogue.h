@@ -54,6 +54,7 @@ void movePlayer(Position newPos);
 // room.c functions
 Room createRoom(int y, int x, int height, int width);
 void addRoomToMap(Room room);
+void connectRoomCenters(Position centerOne, Position centerTwo);
 
 // externs
 extern const int MAP_HEIGHT;
