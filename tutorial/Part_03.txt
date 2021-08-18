@@ -1,0 +1,394 @@
+In this part of the tutorial we're going to setup the randomized generation of our dungeon rooms and their hallways. Let's get right to it!
+
+## The Room Struct
+
+First off, we're going to create a new struct for our rooms which will allow us to easily go about our dungeon generation process. Open your `rogue.h` file and add the following struct below your `Tile` struct:
+
+```c
+...
+} Tile;
+
+typedef struct
+{
+  int height; 
+  int width;
+  Position pos;
+  Position center;
+} Room;
+
+typedef struct
+{
+...
+```
+
+The `Room` struct contains `height` and `width` members, `pos`, which defines the upper-left corner of the room, and `center`, which we will use to connect each room to the next. We'll need a function to create each individual room and another to add the room to our map array. Open a new file in `src/` called `room.c` and add the following code:
+
+```c
+#include <rogue.h>
+
+Room createRoom(int y, int x, int height, int width)
+{
+  Room newRoom;
+
+  newRoom.pos.y = y;
+  newRoom.pos.x = x;
+  newRoom.height = height;
+  newRoom.width = width;
+  newRoom.center.y = y + (int)(height / 2);
+  newRoom.center.x = x + (int)(width / 2);
+
+  return newRoom;
+}
+
+void addRoomToMap(Room room)
+{
+  for (int y = room.pos.y; y < room.pos.y + room.height; y++)
+  {
+    for (int x = room.pos.x; x < room.pos.x + room.width; x++)
+    {
+      map[y][x].ch = '.';
+      map[y][x].walkable = true;
+    }
+  }
+}
+```
+
+The function `createRoom()` takes the `y` and `x` coordinates to assign to the room's `pos` member and also its `height` and `width`. It calculates the room's `center` variable from a simple calculation with the parameters given. When we divide the `height` and `width` by 2 to get the center point of the room we are casting the result of that division to an `int` type, so that we can add it to either `y` or `x` and get an `int` variable to represent the coordinates of our `center` variable, otherwise, the division would give us a `float` number. After `newRoom` is properly created, we return it to the calling function.
+
+In `addRoomToMap()` we are looping through the space of the room and setting the corresponding tiles in our map array to be floors. The start position for the loop will be the `pos` variable's `y` and `x` members and for the loop condition we add each of these to the room's `height` and `width` respectively to get a loop through the dimensions of the room. Notice that at the moment, we could call this function with parameters that create a room with dimensions that exceed or are entirely outside of the space of our map array. If we do that, the function will try to iterate through indices which do not exist in our `map` array and this will cause our game to crash. Later on we'll add a check to avoid this behaviour, but for now, we'll have to be mindful of the parameters we pass the function.
+
+Let's add these functions to our `rogue.h` file:
+
+```diff
+...
+// player.c functions
+...
++
++// room.c functions
++Room createRoom(int y, int x, int height, int width);
++void addRoomToMap(Room room);
+
+// externs
+...
+```
+
+Now we'll try using these functions with the `rand()` function in order to get random parameters and have different rooms every time we start the game. 
+
+##Randomization
+
+The `rand()` function is defined in the `stdlib.h` header file, which we already have included. It takes no arguments and returns an int ranging from 0 to `RAND_MAX`, which is a predefined constant that is at least 32767. In order to get the random numbers we want we'll use the modulus operand `%` to get the remainder from dividing the number returned by `rand()`. For example, if we wanted to get random numbers between 0 and 9, we would write `rand() % 10`. If we wanted a number from 5 to 9, we would have to add a minimum so that the smallest number returned from `rand()` would be 5 instead of 0, and then we would need to reduce the divisor in order to avoid overshooting and getting numbers from 5 to 14. The modified code would look like `(rand() % 5) + 5`.
+
+One issue with the `rand()` function is that it is merely a pseudo-random generator, which means that it is in fact deterministic and it will always return the same sequence of numbers unless we provide a different 'seed' number every time we start the game. To provide the 'seed' number we use the `srand()` function, to which we will pass the result of the `time()` function. The `time()` function is defined in the `time.h` header file. 
+
+First let's add the `time.h` header file to our `rogue.h`:
+
+```diff
+#ifndef ROGUE_H
+#define ROGUE_H
+
+#include <ncurses.h>
+#include <stdlib.h>
++#include <time.h>
+
+typedef struct
+...
+```
+
+We only need to use the `srand()` function to seed the generator once, so we will place our function call at the beginning of our `main` function. Add the following to `main.c`:
+
+```diff
+...
+int main(void)
+{
+  Position start_pos;
+
+  cursesSetup();
++  srand(time(NULL));
+
+  map = createMapTiles();
+...
+```
+
+Now we're ready to use `rand()` to generate random rooms. Open the `map.c` file and modify the `setupMap()` function to look like the following:
+
+```c
+#include <rogue.h>
+
+Tile** createMapTiles(void)
+{
+...
+}
+
+Position setupMap(void)
+{
+  int y, x, height, width, n_rooms;
+  n_rooms =  (rand() % 11) + 5;
+  Room* rooms = calloc(n_rooms, sizeof(Room));
+  Position start_pos;
+
+  for (int i = 0; i < n_rooms; i++)
+  {
+    y = (rand() % (MAP_HEIGHT - 10)) + 1;
+    x = (rand() % (MAP_WIDTH - 20)) + 1;
+    height = (rand() % 7) + 3;
+    width = (rand() % 15) + 5;
+    rooms[i] = createRoom(y, x, height, width);
+    addRoomToMap(rooms[i]);
+  }
+
+  start_pos.y = rooms[0].center.y;
+  start_pos.x = rooms[0].center.x;
+
+  free(rooms);
+
+  return start_pos;
+}
+
+void freeMap(void)
+{
+...
+}
+```
+
+Let's take a look at what we're doing here.
+
+```c
+  int y, x, height, width, n_rooms;
+  n_rooms =  (rand() % 11) + 5;
+  Room* rooms = calloc(n_rooms, sizeof(Room));
+  Position start_pos;
+```
+First we declare a few int variables we'll need. `y`, `x`, `height` and `width` will be reassigned throughout the loop to hold the parameters of each room we create. `n_rooms` is assigned a random number between 5 and 15 in the next line of code. Then we use that number to define a one-dimensional array of `Room`s called `rooms`. And finally we declare the `start_pos` that we will use at the end to return an appropriate starting location for the player. 
+
+With respect to the `rooms` array, we could choose to change the definition to be a variable-length-array, using something like:
+
+```c
+Room rooms[n_rooms];
+```
+
+This would save us the use of `calloc()` and also the use of `free()` for this array. However, this form of variable-length-arrays is implementation dependent and doesn't necessarily work on all compilers. Therefore, I think it's better if we choose to use dynamic allocation of memory to create this array, so that the code is portable across different C compiler implementations. 
+
+After those four lines of setup, we have the for loop:
+
+```c
+  for (int i = 0; i < n_rooms; i++)
+  {
+    y = (rand() % (MAP_HEIGHT - 10)) + 1;
+    x = (rand() % (MAP_WIDTH - 20)) + 1;
+    height = (rand() % 7) + 3;
+    width = (rand() % 15) + 5;
+    rooms[i] = createRoom(y, x, height, width);
+    addRoomToMap(rooms[i]);
+  }
+```
+
+The first two lines of the loop define the `y` and `x` of the upper-left corner of our room. The `y` will be an int between 1 and 15 and the `x` will be an int between 1 and 80. We're not using the entire dimensions of the map so that we don't get a position that is close to the edges of the map, otherwise the room would overflow from our map once we add the height and width. 
+
+The next two lines define the `height` to be a random number between 3 and 9 and the `width` to be between 5 and 19. These dimension will allow our rooms to stay within the parameters of our map. 
+
+**Attention**
+**Keep in mind that if you changed the parameters of the `MAP_HEIGHT` or `MAP_WIDTH` to your liking, you need to also modify the parameters we are using to create our rooms so that they are within the dimensions of the map. Otherwise, the game will crash when it tries to allocate a room outside of the map.**
+
+The next line calls the `createRoom()` function with the parameters we've randomly determined and assigns the return value to the appropriate location of the `rooms` array. And finally we call the `addRoomToMap()` function with the same index of the array as we've just created. 
+
+After the for loop we assign the values of the center of the first room in the array to our `start_pos` variable. Since this is the last thing we needed to use the array for, we free the `rooms` array. Finally we return the `start_pos` so that the calling function can position the player in the center of the first room created. 
+
+Try to compile the game now. You should get something like this:
+![001](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/mbxhk9fgn15qy8gam3ou.png)
+ 
+As you can see, the rooms frequently overlap each other, generating rooms of different sizes rather than just simple rectangles. I personally find this result to be more appealing as it generates more organic-looking spaces, while also having the advantage of being simpler to code. If you were looking for something like the classic 'Rogue' where each room is distinctly separate from the rest, you can try implementing a check for each room to verify whether it overlaps with other rooms and then skip the creation of that room. Since skipping a room would leave empty index spaces in our `rooms` array, you would need to use a separate counter to keep track of how many rooms you've added to the array. A possible solution for that would look like this **(DON'T ADD THE FOLLOWING CODE IF YOU WANT TO FOLLOW ALONG WITH THE TUTORIAL, THIS IS JUST A SUGGESTION IN CASE YOU WANT TO AVOID OVERLAPPING ROOMS IN YOUR GAME)**:
+
+```c
+Position setupMap(void)
+{
+  int y, x, height, width, n_rooms;
+  n_rooms =  (rand() % 11) + 5;
+  Room* rooms = calloc(n_rooms, sizeof(Room));
+  Position start_pos;
+
+  int rooms_counter = 0;
+
+  for (int i = 0; i < n_rooms; i++)
+  {
+    y = (rand() % (MAP_HEIGHT - 10)) + 1;
+    x = (rand() % (MAP_WIDTH - 20)) + 1;
+    height = (rand() % 7) + 3;
+    width = (rand() % 15) + 5;
+
+    if (!roomOverlaps(rooms, rooms_counter, y, x, height, width))
+    {
+      rooms[rooms_counter] = createRoom(y, x, height, width);
+      addRoomToMap(rooms[rooms_counter]);
+      rooms_counter++;
+    }
+  }
+
+  start_pos.y = rooms[0].center.y;
+  start_pos.x = rooms[0].center.x;
+
+  free(rooms);
+
+  return start_pos;
+}
+
+bool roomOverlaps(Room* rooms, int rooms_counter, int y, int x, int height, int width)
+{
+  for (int i = 0; i < rooms_counter; i++)
+  {
+    if (x >= rooms[i].pos.x + rooms[i].width || rooms[i].pos.x >= x + width)
+    {
+      continue;
+    }
+    if (y + height <= rooms[i].pos.y || rooms[i].pos.y + rooms[i].height <= y)
+    {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+```
+We will continue without these changes for this tutorial, so if you decide to add this anti-overlap logic to your code you will have to change a few things of what I present in the tutorial.
+
+##Connecting Rooms
+
+Even though sometimes our rooms overlap and connect, we still get many rooms that appear disconnected from where the player is located. Let's create a function that will generate hallways between the centers of two rooms. Open our `room.c` file and append the following function at the bottom:
+
+```c
+...
+void drawRoom(Room* room)
+{
+...
+}
+
+void connectRoomCenters(Position centerOne, Position centerTwo)
+{ 
+  Position temp;
+  temp.x = centerOne.x;
+  temp.y = centerOne.y;
+  
+  while (true)
+  { 
+    if (abs((temp.x - 1) - centerTwo.x) < abs(temp.x - centerTwo.x))
+      temp.x--;
+    else if (abs((temp.x + 1) - centerTwo.x) < abs(temp.x - centerTwo.x))
+      temp.x++;
+    else if (abs((temp.y + 1) - centerTwo.y) < abs(temp.y - centerTwo.y))
+      temp.y++;
+    else if (abs((temp.y - 1) - centerTwo.y) < abs(temp.y - centerTwo.y))
+      temp.y--;
+    else
+      break;
+
+    map[temp.y][temp.x].ch = '.';
+    map[temp.y][temp.x].walkable = true;
+  }
+} 
+```
+
+Let's take a look at what this function does. `connectRoomCenters()` takes two `Position` arguments which will be the centers of the two rooms we want to connect. 
+
+```c
+  Position temp;
+  temp.x = centerOne.x;
+  temp.y = centerOne.y;
+```
+
+This section will create a `Position` variable called `temp` which we will modify at each step and use to draw the hallways that connect our rooms. It starts in the same position as the center of the first room. 
+
+Then we open a `while` loop with its condition set to `true`. We will code a `break` statement into the loop in order to prevent an infinite loop.
+
+Inside the `while` loop we have a series of `if` statements, each of which, if true, will modify either the `x` or the `y` of our `temp` variable by adding or subtracting one.
+
+The first if statement,
+
+```c
+  if (abs((temp.x - 1) - centerTwo.x) < abs(temp.x - centerTwo.x))
+```
+checks to see whether subtracting 1 to the `x` of our `temp` variable creates a position which is closer to our second room center. It does this by subtracting 1 from `temp.x`, getting the difference between this new `x` position and the `x` position of the second room, `centerTwo.x` and then comparing this number with the difference between the current `temp.x` and `centerTwo.x`, using the `abs()` function on both sides to get a positive integer since we are measuring distances. If the left side of the equation gives a smaller number than the right side, that means that by decreasing the `x` value of the first room's center, we are getting closer to the center of the second room. If that is the case, then the `if` statement condition is true and it runs
+
+```c
+       temp.x--;
+```
+
+which will modify our `temp` variable. All the other `if` statements are then skipped and the code jumps directly to the last two lines of our `while` loop:
+
+```c
+    map[temp.y][temp.x].ch = '.';
+    map[temp.y][temp.x].walkable = true;
+```
+
+In this part we simply use the modified `temp` variable in order to access the appropriate tile in our `map` array and change that tile to become floor space. The `while` loop will then restart. 
+
+As long as decreasing the `x` value of the `temp` variable gets us closer to the second room, it will continue to decrease it and change the appropriate tiles to be floors. Eventually the condition will be false, and the other `if` statements will be tested.
+
+The other `if` statements are analogous to the first one but they test whether increasing `x`, increasing `y` or decreasing `y` respectively will produce a position that is closer to the second room. The algorithm will continue to make modifications to the `temp` variable in a way that reduces the distance between it and the center of the second room.
+
+Eventually `temp` will have the same `y` and `x` positions as the center of the second room. When that happens, no possible modification to either `y` or `x` will provide a position that is closer to the second room center than the position which is already represented by `temp`. In this case, all `if` conditions will fail and the last `else` clause will be executed closing the `while` loop with `break`. 
+
+Add the function to our `rogue.h` file:
+```diff
+// room.c functions
+Room createRoom(int y, int x, int height, int width);
+void addRoomToMap(Room room);
++void connectRoomCenters(Position centerOne, Position centerTwo);
+
+// externs
+```
+
+Now we can use it in our `map.c` file. Modify the `setupMap()` function with the following lines:
+
+```diff
+Position setupMap(void)
+{
+  int y, x, height, width, n_rooms;
+  n_rooms =  (rand() % 11) + 5;
+  Room* rooms = calloc(n_rooms, sizeof(Room));
+  Position start_pos;
+
+  for (int i = 0; i < n_rooms; i++)
+  {
+    y = (rand() % (MAP_HEIGHT - 10)) + 1;
+    x = (rand() % (MAP_WIDTH - 20)) + 1;
+    height = (rand() % 7) + 3;
+    width = (rand() % 15) + 5;
+    rooms[i] = createRoom(y, x, height, width);
+    addRoomToMap(rooms[i]);
++
++    if (i > 0)
++    {
++      connectRoomCenters(rooms[i-1].center, rooms[i].center);
++    }
+  }
+
+  start_pos.y = rooms[0].center.y;
+  start_pos.x = rooms[0].center.x;
+
+  free(rooms);
+
+  return start_pos;
+}
+```
+
+Here we are simply adding 
+
+```c
+    if (i > 0)
+    {
+      connectRoomCenters(rooms[i-1].center, rooms[i].center);
+    }
+```
+
+to the room creation loop. 
+
+First we check if the `i` loop counter is greater than 0, so that the code inside the loop doesn't run for the first room created. When the `i` is greater than 0, we know that we have already created at least one other room and therefore we can access `rooms[i-1]` confidently, knowing that we are not going out of bounds of our `rooms` array. 
+
+The loop code simply calls the `connectRoomCenters()` function with the previously created room as the first argument and the current room as the second argument. By the end of the loop that creates rooms, all rooms will be connected to each other. 
+
+Now try compiling and verifying that all of your rooms are now reachable through hallways.
+
+And that's all we had to do in order to get a randomly generated dungeon! Hope to see you in the next part of this tutorial, where we'll be looking into generating a field of view, in order to add a little darkness and mystery to our dungeon. 
+
+You can check out the full code for this part of the tutorial [here](https://github.com/ignaoya/c-roguelike-tutorial/tree/Part_03)!
