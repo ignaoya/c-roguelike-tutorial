@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+// color pairs
+#define VISIBLE_COLOR 1
+#define SEEN_COLOR 2
+
 typedef struct
 {
 	int y;
@@ -14,6 +18,7 @@ typedef struct
 typedef struct
 {
 	char ch;
+	int color;
 	bool walkable;
 } Tile;
 
@@ -29,6 +34,7 @@ typedef struct
 {
 	Position pos;
 	char ch;
+	int color;
 } Entity;
 
 //draw.c functions

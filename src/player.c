@@ -8,6 +8,7 @@ Entity* createPlayer(Position start_pos)
 	newPlayer->pos.y = start_pos.y;
 	newPlayer->pos.x = start_pos.x;
 	newPlayer->ch = '@';
+	newPlayer->color = COLOR_PAIR(VISIBLE_COLOR);
 
 	return newPlayer;
 }

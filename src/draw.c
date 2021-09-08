@@ -6,14 +6,14 @@ void drawMap(void)
 	{
 		for (int x = 0; x < MAP_WIDTH; x++)
 		{
-			mvaddch(y, x, map[y][x].ch);
+			mvaddch(y, x, map[y][x].ch | map[y][x].color);
 		}
 	}
 }
 
 void drawEntity(Entity* entity)
 {
-	mvaddch(entity->pos.y, entity->pos.x, entity->ch);
+	mvaddch(entity->pos.y, entity->pos.x, entity->ch | entity->color);
 }
 
 void drawEverything(void)

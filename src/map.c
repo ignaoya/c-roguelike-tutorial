@@ -10,6 +10,7 @@ Tile** createMapTiles(void)
 		for (int x = 0; x < MAP_WIDTH; x++)
 		{
 			tiles[y][x].ch = '#';
+			tiles[y][x].color = COLOR_PAIR(VISIBLE_COLOR);
 			tiles[y][x].walkable = false;
 		}
 	}
