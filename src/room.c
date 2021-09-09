@@ -22,6 +22,7 @@ void addRoomToMap(Room room)
 		{
 			map[y][x].ch = '.';
 			map[y][x].walkable = true;
+			map[y][x].transparent = true;
 		}
 	}
 }
@@ -47,6 +48,7 @@ void connectRoomCenters(Position centerOne, Position centerTwo)
 
 		map[temp.y][temp.x].ch = '.';
 		map[temp.y][temp.x].walkable = true;
+		map[temp.y][temp.x].transparent = true;
 	}
 }
 

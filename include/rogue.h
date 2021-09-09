@@ -4,6 +4,7 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 // color pairs
 #define VISIBLE_COLOR 1
@@ -20,6 +21,9 @@ typedef struct
 	char ch;
 	int color;
 	bool walkable;
+	bool transparent;
+	bool visible;
+	bool seen;
 } Tile;
 
 typedef struct
@@ -61,6 +65,14 @@ void movePlayer(Position newPos);
 Room createRoom(int y, int x, int height, int width);
 void addRoomToMap(Room room);
 void connectRoomCenters(Position centerOne, Position centerTwo);
+
+// fov.c functions
+void makeFOV(Entity* player);
+void clearFOV(Entity* player);
+int getDistance(Position origin, Position target);
+bool isInMap(int y, int x);
+bool lineOfSight(Position origin, Position target);
+int getSign(int a);
 
 // externs
 extern const int MAP_HEIGHT;

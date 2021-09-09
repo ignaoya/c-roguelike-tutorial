@@ -19,6 +19,7 @@ void gameLoop(void)
 {
 	int ch;
 
+	makeFOV(player);
 	drawEverything();
 
 	while(ch = getch())

@@ -46,8 +46,10 @@ void movePlayer(Position newPos)
 {
 	if (map[newPos.y][newPos.x].walkable)
 	{
+		clearFOV(player);
 		player->pos.y = newPos.y;
 		player->pos.x = newPos.x;
+		makeFOV(player);
 	}
 }
 
