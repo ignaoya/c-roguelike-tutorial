@@ -1,6 +1,6 @@
 #include <rogue.h>
 
-void cursesSetup(void)
+bool cursesSetup(void)
 {
 	initscr();
 	noecho();
@@ -12,6 +12,14 @@ void cursesSetup(void)
 
 		init_pair(VISIBLE_COLOR, COLOR_WHITE, COLOR_BLACK);
 		init_pair(SEEN_COLOR, COLOR_BLUE, COLOR_BLACK);
+		
+		return true;
+	}
+	else
+	{
+		mvprintw(20, 50, "Your system doesn't support color. Can't start game!");
+		getch();
+		return false;
 	}
 }
 

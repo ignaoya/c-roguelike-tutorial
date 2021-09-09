@@ -47,7 +47,7 @@ void drawEntity(Entity* entity);
 void drawEverything(void);
 
 //engine.c functions
-void cursesSetup(void);
+bool cursesSetup(void);
 void gameLoop(void);
 void closeGame(void);
 
