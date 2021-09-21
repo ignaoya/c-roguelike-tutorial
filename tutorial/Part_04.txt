@@ -1,0 +1,647 @@
+t's not much of an adventure if you can't get surprised by hidden goblins and sudden encounters with big angry trolls. Right now the player can see everything in the dungeon. In this part of the tutorial we'll add an algorithm which will give the player a limited field of view, so that he has to walk around in order to discover the dungeon around him. Before we go ahead with that, however, we will add color to our game so that we can differentiate what we are currently seeing from what we have seen in the past. 
+
+##Adding color
+
+When we use ncurses, color is not enabled by default, it only uses black and white. In order to use color we need to use a function from ncurses which initializes the color scheme mode. Before we do that, we will use another function that verifies whether the current terminal that is running the application actually supports colors. If it returns true we will proceed to initialize the color mode, if it returns false, we will give the player an appropriate message informing him that his terminal does not support colors and we will close the game.
+
+Once color is initialized, ncurses provides 8 different predefined colors which we can use. Colors are not used individually in ncurses, they must be used in pairs. A background color and a foreground color go together to make up a color pair that you can give to the different parts in your game. I will show you how to initialize a color pair with the default colors provided by ncurses. Ncurses also allows you to define your own colors in case you need more than the eight default ones, but we will stick to the basic eight colors for this tutorial. If you want more colors you will have to look into the ncurses documentation. Be aware that if you decide to use more than the eight basic colors not all terminals will be able to display them. While the linux terminal emulators usually support 256 colors, I've found that the windows Command Line only supports 8.
+
+To initialize color pairs, ncurses takes an int which defines each pair. In order to use more appropriate names for each color first we will define a set of constants in our header file. Add the following lines to our `rogue.h`:
+
+```diff
+#include <ncurses.h>
+#include <stdlib.h>
+#include <time.h>
++
++// color pairs
++#define VISIBLE_COLOR 1
++#define SEEN_COLOR 2
+
+typedef struct
+...
+```
+
+Here we are defining a constant for each of the color pairs we will use in this part of the tutorial. We will use these constants when we initialize our color pairs to avoid having to use non-descriptive numbers every time we want to use the color pairs.
+
+Next we will add the initialization code to our `engine.c` file, making our `cursesSetup()` function look like this:
+
+```c
+void cursesSetup(void)
+{ 
+  initscr();
+  noecho();
+  curs_set(0);
+  
+  if (has_colors())
+  {
+    start_color();
+
+    init_pair(VISIBLE_COLOR, COLOR_WHITE, COLOR_BLACK);
+    init_pair(SEEN_COLOR, COLOR_BLUE, COLOR_BLACK);
+  }
+}
+```
+
+In the first new line `if (has_colors())` checks whether the terminal supports colors. If it does, we initialize ncurse's color system with `start_color()`. Finally, we initialize two color pairs:
+
+```c
+    init_pair(VISIBLE_COLOR, COLOR_WHITE, COLOR_BLACK);
+    init_pair(SEEN_COLOR, COLOR_BLUE, COLOR_BLACK);
+```
+
+The ncurses `init_pair()` function takes an `int` as a first parameter to identify the new color pair. The second parameter is the foreground color and the third is the background color. The uppercase constants that we have passed for these parameters are some of the color constants defined by ncurses. We have now established that our `VISIBLE_COLOR` will have a white font color on a black background and our `SEEN_COLOR` will have a blue font color on a black background. Since we don't have gray in our predefined ncurses colors we'll use blue, which will substitute nicely to make up the parts of the dungeon which we have already seen but which are plunged into shadow once the player moves on.
+
+Now that the colors are initialized we can use them with a function called `COLOR_PAIR()` which takes as argument one of our predefined color numbers such as `VISIBLE_COLOR` and returns an int that we can use to modify ASCII characters when we print them to the ncurses screen. In order to assign each map tile and each entity a color, we'll add an `int color` variable to our `Tile` and `Entity` structs in our `rogue.h` file, like so:
+
+```diff
+typedef struct
+{
+  char ch;
++  int color;
+  bool walkable;
+} Tile;
+
+typedef struct
+{
+  ...
+} Room;
+
+typedef struct
+{
+  Position pos;
+  char ch;
++  int color;
+} Entity;
+```
+
+Now that our structs are set up to include a color variable, we need to modify a few functions. Open `map.c` and add the following line to our `createMapTiles()` function:
+
+```diff
+Tile** createMapTiles(void)
+{
+  Tile** tiles = calloc(MAP_HEIGHT, sizeof(Tile*));
+
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  {
+    tiles[y] = calloc(MAP_WIDTH, sizeof(Tile));
+    for (int x = 0; x < MAP_WIDTH; x++)
+    {
+      tiles[y][x].ch = '#';
++      tiles[y][x].color = COLOR_PAIR(VISIBLE_COLOR);
+      tiles[y][x].walkable = false;
+    }
+  }
+
+  return tiles;
+}
+```
+
+And open the `player.c` file and modify the `createPlayer()` function with the following:
+
+```diff
+Entity* createPlayer(Position start_pos)
+{
+  Entity* newPlayer = calloc(1, sizeof(Entity));
+
+  newPlayer->pos.y = start_pos.y;
+  newPlayer->pos.x = start_pos.x;
+  newPlayer->ch = '@';
++  newPlayer->color = COLOR_PAIR(VISIBLE_COLOR);
+
+  return newPlayer;
+}
+```
+
+Now that our struct variables have a color assigned we have to modify some code to use their colors when we draw them on the screen. In order to use the color pairs, we will use the bitwise OR operator `|` to modify each struct's `char` variable. Open our `draw.c` file and change the lines like this:
+
+```diff
+void drawMap(void)
+{
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  {
+    for (int x = 0; x < MAP_WIDTH; x++)
+    {
+-      mvaddch(y, x, map[y][x].ch);
++      mvaddch(y, x, map[y][x].ch | map[y][x].color);
+    }
+  }
+}
+
+void drawEntity(Entity* entity)
+{   
+-  mvaddch(entity->pos.y, entity->pos.x, entity->ch);
++  mvaddch(entity->pos.y, entity->pos.x, entity->ch | entity->color);
+}
+```
+What we are adding to the `ch` variables is a bitwise OR operation. The bitwise OR is an operation that compares the binary of each side of the operation and returns a binary that will retain `1`s whenever one or both of those sides have a `1`, or will return a `0` otherwise. In this case the OR operation is returning an int that represents the same character as before but with a modified color scheme. 
+
+If we run our code now, it should do exactly the same as it did before, with no change. And now we can move on to implementing a field of vision for our player where we will use our `SEEN_COLOR` and actually put our color scheme to use.
+
+##Field of Vision
+
+We will now create a new file where we will write all of the code needed to use a field of vision for our player that will only allow us to see up to a certain range. We will code two functions that will be used by other c modules in our game, those will be `makeFOV()` and `clearFOV()`. `makeFOV()` will make the appropriate calculations and modify the `Tile`s around the player accordingly so that the game shows them on the screen. 'clearFOV()' will make sure that every time we move we clear all of the tiles which we had previously seen, so that the next time `makeFOV()` is called everything is cleared and we don't get a trail of light left behind us as we move. `makeFOV()` will make use of several other functions in this file, the most complicated of which is `lineOfSight()` which is the function that will make sure that our player can't see through walls. This function is used by implementing the simplest algorithm for line of sight I could find. It is a just an adaptation of [this](http://roguebasin.com/index.php/Simple_Line_of_Sight) algorithm by Steve Register.
+
+Before we start programming the algorithms for field of view we need to add three new boolean variables to our `Tile` struct in our `rogue.h` file, like so:
+
+```diff
+...
+typedef struct
+{
+  char ch;
+  int color;
+  bool walkable;
++  bool transparent;
++  bool visible;
++  bool seen;
+} Tile;
+...
+```
+
+The `transparent` boolean will be used by our `lineOfSight()` function to determine which parts of the map the player can see through, while the `visible` and `seen` will be used by `makeFOV()` and `clearFOV()` as they go about modifying the map to fit what the player can actually see.
+
+Go ahead and create a file called `fov.c` and add the following code to it:
+
+```c
+#include "rogue.h"
+
+void makeFOV(Entity* player)
+{ 
+  int y, x, distance;
+  int RADIUS = 15;
+  Position target;
+  
+  map[player->pos.y][player->pos.x].visible = true;
+  map[player->pos.y][player->pos.x].seen = true;
+  
+  for (y = player->pos.y - RADIUS; y < player->pos.y + RADIUS; y++)
+  { 
+    for (x = player->pos.x - RADIUS; x < player->pos.x + RADIUS; x++)
+    { 
+      target.y = y;
+      target.x = x;
+      distance = getDistance(player->pos, target);
+      
+      if (distance < RADIUS)
+      { 
+        if (isInMap(y, x) && lineOfSight(player->pos, target))
+        { 
+          map[y][x].visible = true;
+          map[y][x].seen = true;
+        } 
+      } 
+    } 
+  } 
+} 
+```
+
+The `makeFOV()` function returns void and takes a single `Entity*` as an argument. 
+
+```c
+  int y, x, distance;
+  int RADIUS = 15;
+  Position target;
+```
+Here we define the variables that we will use for this function. `y` and `x` will be iterated according to the RADIUS variable in order to get a square field that extends as many tiles as the `RADIUS` function to all sides of the player. We are hardcoding a `RADIUS` for now but we will later add a radius variable to the player and take the radius from there. The `Position target` will be used to send the `y` and `x` coordinates to our `getDistance()` function.
+
+```c
+  map[player->pos.y][player->pos.x].visible = true;
+  map[player->pos.y][player->pos.x].seen = true;
+```
+Here we are simply assigning `true` to the position in the map that the player is standing on, since he will always be able to see at least where he stands. Making a tile visible will allow our `drawMap()` function to draw the tile and anything on it, but we also set `seen` to true, so that when we move away from that position we can switch the `visible` variable to `false`, and our `drawMap()` function will then check if the position is `seen` and draw it in blue so that the player `remembers` where he's been, even if he can't see it at the moment.
+
+Next, we enter the loop:
+```c
+  for (y = player->pos.y - RADIUS; y < player->pos.y + RADIUS; y++)
+  { 
+    for (x = player->pos.x - RADIUS; x < player->pos.x + RADIUS; x++)
+    {
+```
+As I mentioned previously, the loop iterates `y` and `x` to go through all of the coordinates around the player by as much as the RADIUS variable.
+
+```c
+      target.y = y;
+      target.x = x;
+      distance = getDistance(player->pos, target);
+```
+Inside the loop first we assign the `y` and `x` variables to the `target` variable and use that to call the `getDistance()` function, which we will code shortly, and assign it's return value to `distance`. `getDistance()` will return the distance from the player's position to the `target` position coordinate that the loop is iterating through at the moment.
+
+```c
+      if (distance < RADIUS)
+      { 
+        if (isInMap(y, x) && lineOfSight(player->pos, target))
+        { 
+          map[y][x].visible = true;
+          map[y][x].seen = true;
+        } 
+```
+Finally, we check whether the distance from the player to the `target` is shorter than the RADIUS. Performing this check allows us to make the FOV of the player a pseudo-circular area around him, instead of a sharp square. If the distance is shorter than the RADIUS, then we proceed with the final check to verify if the player can actually see the given location. 
+
+In the final if statement, we first verify if the `y`-`x` coordinate is inside our map with the `isInMap()` function, this will prevent us from crashing the game by going out of bounds in the map array. If, and only if, this function returns `true`, then the call to `lineOfSight(player->pos, target)` is made, and, if that also returns `true`, we switch the appropriate map `Tile`'s `visible` and `seen` variables to `true`. 
+
+Now add the following function to the same `fov.c` file:
+
+```c
+...
+void clearFOV(Entity* player)
+{ 
+  int y, x;
+  int RADIUS = 15;
+  
+  for (y = player->pos.y - RADIUS; y < player->pos.y + RADIUS; y++)
+  { 
+    for (x = player->pos.x - RADIUS; x < player->pos.x + RADIUS; x++)
+    {
+      if (isInMap(y, x))
+        map[y][x].visible = false;
+    }
+  } 
+} 
+```
+In this function we are again iterating through the section of map around the player just like in the `makeFOV()` function, except in this case we are simply turning every single `Tile`'s `visible` variable to `false`, in order to clear the map and allow for a fresh run of the `makeFOV()` function. We use the `isInMap()` function again to avoid going out of bounds of the `map` array.
+
+Next, we will start adding our helper functions that we used in these functions. Append the following code below the `clearFOV()` function:
+
+```c
+...
+int getDistance(Position origin, Position target)
+{ 
+  double dy, dx;
+  int distance;
+  dx = target.x - origin.x;
+  dy = target.y - origin.y;
+  distance = floor(sqrt((dx * dx) + (dy * dy)));
+
+  return distance;
+}
+
+bool isInMap(int y, int x)
+{ 
+  if ((0 < y && y < MAP_HEIGHT - 1) && (0 < x && x < MAP_WIDTH - 1))
+  { 
+    return true;
+  }
+  
+  return false;
+}
+```
+
+The `getDistance()` function simply calculates the distance between two points using the hypotenuse formula. It uses `floor()` and `sqrt()` functions which are defined in the `math.h` header. We will have to add this header to our `rogue.h` file before compiling.
+
+The `isInMap()` function checks whether the `y` and `x` parameters are in the correct range, keeping a padding of 1 both at the beginning and end of the range. It returns `true` if the respective `int`s are within the range of the `map` array or `false` otherwise.
+
+Next we will add the most complicated of the helper functions, this function will do the brunt of the calculations. The algorithm is not entirely efficient and if you were making a more complicated game with higher graphical requirements this algorithm would likely slow your game down. As it is, our game will be perfectly fine with this algorithm and due to its relative simplicity it serves the purpose of this tutorial nicely.
+
+Add the following code to the bottom of our `fov.c` file:
+
+```c
+...
+bool lineOfSight(Position origin, Position target)
+{
+  int t, x, y, abs_delta_x, abs_delta_y, sign_x, sign_y, delta_x, delta_y;
+
+  delta_x = origin.x - target.x;
+  delta_y = origin.y - target.y;
+
+  abs_delta_x = abs(delta_x);
+  abs_delta_y = abs(delta_y);
+
+  sign_x = getSign(delta_x);
+  sign_y = getSign(delta_y);
+
+  x = target.x;
+  y = target.y;
+
+  if (abs_delta_x > abs_delta_y)
+  {
+    t = abs_delta_y * 2 - abs_delta_x;
+
+    do
+    {
+      if (t >= 0)
+      {
+        y += sign_y;
+        t -= abs_delta_x * 2;
+      }
+
+      x += sign_x;
+      t += abs_delta_y * 2;
+
+      if (x == origin.x && y == origin.y)
+      {
+        return true;
+      }
+    }
+    while (map[y][x].transparent);
+
+    return false;
+  }
+  else
+  {
+    t = abs_delta_x * 2 - abs_delta_y;
+
+    do
+    {
+      if (t >= 0)
+      {
+        x += sign_x;
+        t -= abs_delta_y * 2;
+      }
+
+      y += sign_y;
+      t += abs_delta_x * 2;
+
+      if (x == origin.x && y == origin.y)
+      {
+        return true;
+      }
+    }
+    while (map[y][x].transparent);
+
+    return false;
+  }
+}
+
+int getSign(int a)
+{
+  return (a < 0) ? -1 : 1;
+}
+```
+
+The `lineOfSight()` function takes two `Position` arguments, an origin and a target and returns a boolean. It will return true if the origin is in line of sight of the target. Using the `transparent` variable of the `Tile`s in our map, the function goes through all of the `Tile`s that make the shortest line from the origin to the target, if it can go through the whole line without encountering a `Tile` that has a `transparent` value of `false`, it returns `true`, and it returns `false` otherwise. I won't analyze this function line per line as it is quite long and complex, but you can take a look at the original documented code by Steve Register [here](http://roguebasin.com/index.php/Simple_Line_of_Sight) if you want to get a better explanation of how the algorithm works.
+
+The `getSign()` function simply returns a 1 or a -1 depending on the sign of the `int` provided. This function is used in `lineOfSight()` as a helper function.
+
+Now all we need to do to use our new field of view functions is make a few small changes in our code. First, we need to initialize all of the new boolean variables we added to our tiles. Open our `map.c` file and add the following lines to the `createMapTiles()` function:
+
+```diff
+Tile** createMapTiles(void)
+{
+  Tile** tiles = calloc(MAP_HEIGHT, sizeof(Tile*));
+
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  {
+    tiles[y] = calloc(MAP_WIDTH, sizeof(Tile));
+    for (int x = 0; x < MAP_WIDTH; x++)
+    {
+      tiles[y][x].ch = '#';
+      tiles[y][x].color = COLOR_PAIR(VISIBLE_COLOR);
+      tiles[y][x].walkable = false;
++      tiles[y][x].transparent = false;
++      tiles[y][x].visible = false;
++      tiles[y][x].seen = false;
+    }
+  }
+
+  return tiles;
+}
+```
+Since we initialize all of our `Tile`s to be walls, we assign their `transparent` variable to be false, as well as the other two.
+
+Now open the `room.c` file and modify the `addRoomToMap()` and the `connectRoomCenters()` functions to use the new `transparent` variable:
+
+```diff
+void addRoomToMap(Room room)
+{
+  for (int y = room.pos.y; y < room.pos.y + room.height; y++)
+  {
+    for (int x = room.pos.x; x < room.pos.x + room.width; x++)
+    {
+      map[y][x].ch = '.';
+      map[y][x].walkable = true;
++      map[y][x].transparent = true;
+    }
+  }
+}
+
+void connectRoomCenters(Position centerOne, Position centerTwo)
+{
+  Position temp;
+  temp.x = centerOne.x;
+  temp.y = centerOne.y;
+
+  while (true)
+  {
+    if (abs((temp.x - 1) - centerTwo.x) < abs(temp.x - centerTwo.x))
+      temp.x--;
+    else if (abs((temp.x + 1) - centerTwo.x) < abs(temp.x - centerTwo.x))
+      temp.x++;
+    else if (abs((temp.y + 1) - centerTwo.y) < abs(temp.y - centerTwo.y))
+      temp.y++;
+    else if (abs((temp.y - 1) - centerTwo.y) < abs(temp.y - centerTwo.y))
+      temp.y--;
+    else
+      break;
+
+    map[temp.y][temp.x].ch = '.';
+    map[temp.y][temp.x].walkable = true;
++    map[temp.y][temp.x].transparent = true;
+  }
+}
+```
+
+With these simple additions our map is ready to use the field of vision functions. Let's add our functions to our `rogue.h` file and also add a new include for the math functions:
+
+```diff
+#ifndef ROGUE_H
+#define ROGUE_H
+
+#include <ncurses.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+
+...
+
+// room.c functions
+Room createRoom(int y, int x, int height, int width);
+void addRoomToMap(Room room);
+void connectRoomCenters(Position centerOne, Position centerTwo);
++
++// fov.c functions
++void makeFOV(Entity* player);
++void clearFOV(Entity* player);
++int getDistance(Position origin, Position target);
++bool isInMap(int y, int x);
++bool lineOfSight(Position origin, Position target);
++int getSign(int a);
+
+...
+```
+
+Now we just need to use our `makeFOV()` and `clearFOV()` functions in the right place for it to work. First, we will add a call to `makeFOV()` at the start of the game, right before the loop begins. Open `engine.c` and add the following line:
+```diff
+...
+void gameLoop(void)
+{
+  int ch;
++    
++  makeFOV(player);
+  drawEverything();
+
+  while(ch = getch())
+  {
+    if (ch == 'q')
+    {
+      break;
+    }
+
+    handleInput(ch);
+    drawEverything();
+  }
+}
+
+...
+```
+
+This line will create the field of view for the first time right before the map is drawn.
+
+Now open the `player.c` file and modify the `movePlayer()` function like this:
+
+```diff
+...
+void movePlayer(Position newPos)
+{
+  if (map[newPos.y][newPos.x].walkable)
+  {   
++    clearFOV(player);
+    player->pos.y = newPos.y;
+    player->pos.x = newPos.x;
++    makeFOV(player);
+  }
+}
+```
+
+In this way, we are clearing the field of view before we actually make a move, and then we are remaking the field of view once we have performed the player's move.
+
+Finally, we need to modify our draw function. Open `draw.c` file and modify our `drawMap()` function like this:
+
+```diff
+...
+
+void drawMap(void)
+{
+  for (int y = 0; y < MAP_HEIGHT; y++)
+  {
+    for (int x = 0; x < MAP_WIDTH; x++)
+    {
+-      mvaddch(y, x, map[y][x].ch | map[y][x].color);
++      if (map[y][x].visible)
++      {
++        mvaddch(y, x, map[y][x].ch | map[y][x].color);
++      }
++      else if (map[y][x].seen)
++      {
++        mvaddch(y, x, map[y][x].ch | COLOR_PAIR(SEEN_COLOR));
++      }
++      else
++      {
++        mvaddch(y, x, ' ');
++      }
+    }
+  }
+}
+
+...
+```
+
+In the first `if` block, we check if the position is visible to the player and draw the `Tile` using it's own color if it is. If the position is not visible, but it has been seen, the second block will draw the `Tile` using the darker `SEEN_COLOR`. Finally, if the position is neither visible nor seen, the last block will draw an empty space. If we did not do this, the previous drawings would remain.
+
+Now all of the source code is ready, but before we try to compile the program again, we need to add a new flag in our `makefile` so that the compiler knows to link the `math.h` header file properly when compiling. Open the `makefile` and add the following:
+
+```diff
+CC = gcc
+-CFLAGS = -lncurses -I./include/
++CFLAGS = -lncurses -lm -I./include/
+SOURCES = ./src/*.c
+
+...
+```
+
+Now we can finally compile our game again. It should now show you only the nearest parts of the dungeon to the player. If you move around you will see how the shadows move around with the player and the light is stopped by the walls of the dungeon.
+
+Congratulations! We now have a game where we can discover things instead of being shown everything at once!
+
+The only issue now is that if you run the game in a terminal which doesn't support colors, the game will crash when it tries to use colors. Therefore we need to add some logic to our code that will prevent the game from running if it doesn't find color support and inform the user that he should try running the game in a color-compatible terminal.
+
+First we'll modify our `cursesSetup()` function to return a boolean. It will return `true` if it managed to initialize colors, and `false` otherwise. Open `engine.c` and make the following modifications:
+
+```diff
+...
+-void cursesSetup(void)
++bool cursesSetup(void)
+{
+  initscr();
+  noecho();
+  curs_set(0);
+
+  if (has_colors())
+  {
+    start_color();
+
+    init_pair(VISIBLE_COLOR, COLOR_WHITE, COLOR_BLACK);
+    init_pair(SEEN_COLOR, COLOR_BLUE, COLOR_BLACK);
++
++    return true;
+  }
++  else
++  {
++    mvprintw(20, 50, "Your system doesn't support color. Can't start game!");
++    getch();
++    return false;
++  }
+}
+
+...
+```
+
+This new code will return `true` if the colors are initialized. If they are not, it will print a message to the user informing him of the issue, wait for the user to press any key and then return `false`.
+
+Modify the function declaration in our `rogue.h` file:
+
+```diff
+...
+//engine.c functions
+-void cursesSetup(void);
++bool cursesSetup(void);
+void gameLoop(void);
+void closeGame(void);
+...
+```
+
+Now we need to modify our `main.c` file to use the boolean value returned by `cursesSetup()`. Modify the `main()` function to look like this:
+
+```c
+...
+int main(void)
+{
+  Position start_pos;
+  bool compatibleTerminal;
+
+  compatibleTerminal = cursesSetup();
+
+  if (compatibleTerminal)
+  {
+    srand(time(NULL));
+
+    map = createMapTiles();
+    start_pos = setupMap();
+    player = createPlayer(start_pos);
+
+    gameLoop();
+
+    closeGame();
+  }
+  else
+  {
+    endwin();
+  }
+
+  return 0;
+}
+```
+
+With this in place any errors due to color compatibility will be dealt with smoothly, warning the player of the issue.
+
+That's all for this part of the tutorial. If you want to look at the full code up to this part, you can download it [here](https://github.com/ignaoya/c-roguelike-tutorial/tree/Part_04)!
+
+In the next part of this tutorial we'll be looking into adding monsters to our dungeon!
